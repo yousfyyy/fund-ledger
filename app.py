@@ -136,6 +136,25 @@ def _unhandled(exc):
     return _error_page(500, "Something went wrong on our side")
 
 
+@app.route("/healthz")
+def healthz():
+    url = (os.environ.get("DATABASE_URL") or "").strip()
+    info = {
+        "app": "ok",
+        "database_url_set": bool(url),
+        "dialect": db.engine.dialect.name,
+    }
+    try:
+        with db.get_db() as conn:
+            conn.execute(db.text("SELECT 1"))
+        info["database"] = "ok"
+    except Exception as exc:
+        app.logger.exception("healthz: database check failed")
+        info["database"] = "fail"
+        info["error"] = type(exc).__name__
+    return info, (200 if info["database"] == "ok" else 503)
+
+
 @app.route("/static/<path:filename>")
 def static_files(filename):
     base = os.path.realpath(STATIC_DIR)
