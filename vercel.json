@@ -1,8 +1,0 @@
-{
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "functions": {
-    "app.py": {
-      "excludeFiles": "{fund.db,*.db,__pycache__/**,*.pyc,tests/**,migrate.py,reset_password.py}"
-    }
-  }
-}
