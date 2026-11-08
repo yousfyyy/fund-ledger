@@ -140,12 +140,25 @@ def _build_engine():
     return create_engine(url, pool_pre_ping=True, pool_recycle=300)
 
 
-engine = _build_engine()
+_engine = None
+
+
+def get_engine():
+    """Build the engine on first use.
+
+    Creating it at import time makes the whole app fail to start when the
+    database driver or connection string is wrong, which on Vercel shows up
+    as an opaque 500 on every route. Deferring it keeps the app bootable.
+    """
+    global _engine
+    if _engine is None:
+        _engine = _build_engine()
+    return _engine
 
 
 @contextmanager
 def get_db():
-    conn = engine.connect()
+    conn = get_engine().connect()
     try:
         yield conn
         conn.commit()
@@ -241,7 +254,7 @@ def verify_password(password, salt, expected):
 
 def init_db():
     """Create every table and seed the default admin. Safe to run repeatedly."""
-    metadata.create_all(engine)
+    metadata.create_all(get_engine())
     with get_db() as conn:
         existing = row(conn, "SELECT id FROM users WHERE username = :u", u=DEFAULT_ADMIN_USER)
         if existing is None:

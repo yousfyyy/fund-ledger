@@ -136,14 +136,41 @@ def _unhandled(exc):
     return _error_page(500, "Something went wrong on our side")
 
 
+def _redact(text):
+    url = (os.environ.get("DATABASE_URL") or "").strip()
+    if url:
+        text = text.replace(url, "<DATABASE_URL redacted>")
+        try:
+            password = urllib.parse.urlsplit(url).password
+            if password:
+                text = text.replace(password, "<password redacted>")
+        except ValueError:
+            pass
+    return text
+
+
 @app.route("/healthz")
 def healthz():
     url = (os.environ.get("DATABASE_URL") or "").strip()
-    info = {
-        "app": "ok",
-        "database_url_set": bool(url),
-        "dialect": db.engine.dialect.name,
-    }
+    info = {"app": "ok", "database_url_set": bool(url)}
+    if url:
+        try:
+            info["host"] = urllib.parse.urlsplit(url).hostname or "?"
+        except ValueError:
+            info["host"] = "unparsable"
+    try:
+        import psycopg
+        info["psycopg"] = psycopg.__version__
+    except Exception as exc:
+        info["psycopg"] = "FAIL: " + type(exc).__name__
+
+    try:
+        info["dialect"] = db.get_engine().dialect.name
+    except Exception as exc:
+        info["dialect"] = "fail"
+        info["engine_error"] = _redact(type(exc).__name__ + ": " + str(exc))[:300]
+        return info, 500
+
     try:
         with db.get_db() as conn:
             conn.execute(db.text("SELECT 1"))
@@ -152,7 +179,8 @@ def healthz():
         app.logger.exception("healthz: database check failed")
         info["database"] = "fail"
         info["error"] = type(exc).__name__
-    return info, (200 if info["database"] == "ok" else 503)
+        info["detail"] = _redact(str(exc))[:300]
+    return info, (200 if info.get("database") == "ok" else 503)
 
 
 @app.route("/static/<path:filename>")
